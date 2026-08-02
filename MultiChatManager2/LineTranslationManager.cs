@@ -12,15 +12,19 @@ namespace MultiChatManager2
         private readonly YoudaoTranslator _translator;
         private readonly TranslationPresentationSettings
             _presentationSettings;
+
+        private readonly Func<AiReplyRequest, Task>? _aiReplyRequested;
         private readonly ConcurrentDictionary<string, byte> _processing =
             new(StringComparer.Ordinal);
 
         public LineTranslationManager(
             YoudaoTranslator translator,
-            TranslationPresentationSettings presentationSettings)
+            TranslationPresentationSettings presentationSettings,
+            Func<AiReplyRequest, Task>? aiReplyRequested = null)
         {
             _translator = translator;
             _presentationSettings = presentationSettings;
+            _aiReplyRequested = aiReplyRequested;
         }
 
         public void ClearTranslationCache() =>
@@ -57,8 +61,19 @@ namespace MultiChatManager2
                 using JsonDocument doc = JsonDocument.Parse(
                     e.TryGetWebMessageAsString());
                 JsonElement root = doc.RootElement;
-                if (!root.TryGetProperty("type", out JsonElement type) ||
-                    type.GetString() != "lineTranslationRequest" ||
+
+                if (!root.TryGetProperty("type", out JsonElement type))
+                {
+                    return;
+                }
+
+                if (type.GetString() == "lineAiReplyRequest")
+                {
+                    await HandleAiReplyRequestAsync(webView, accountId, root);
+                    return;
+                }
+
+                if (type.GetString() != "lineTranslationRequest" ||
                     !root.TryGetProperty("messageId", out JsonElement idValue) ||
                     !root.TryGetProperty("text", out JsonElement textValue))
                     return;
@@ -128,6 +143,34 @@ namespace MultiChatManager2
             }
         }
 
+        private async Task HandleAiReplyRequestAsync(
+            WebView2 webView,
+            string accountId,
+            JsonElement root)
+        {
+            if (_aiReplyRequested is null ||
+                !root.TryGetProperty("text", out JsonElement sourceElement) ||
+                !root.TryGetProperty("translation", out JsonElement translationElement))
+            {
+                return;
+            }
+
+            string source = sourceElement.GetString() ?? string.Empty;
+            string translation = translationElement.GetString() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return;
+            }
+
+            await _aiReplyRequested(new AiReplyRequest(
+                webView,
+                accountId,
+                "LINE",
+                source,
+                translation));
+        }
+
         private static async Task ReportFailureAsync(
             WebView2 webView,
             string id,
@@ -160,35 +203,57 @@ namespace MultiChatManager2
             $$$$$$$$$$"""
             (()=> {
               const initialPresentation={{{{{{{{{{JsonSerializer.Serialize(_presentationSettings)}}}}}}}}}};
+              const initialAutoTranslationDisabled={{{{{{{{{{JsonSerializer.Serialize(MainWindow.TranslateVisibleOnly)}}}}}}}}}};
               if(window.__mcmLineTranslatorInstalled) {
                 window.__mcmUpdateLineTranslationSettings?.(initialPresentation);
+                window.__mcmSetAutoTranslationDisabled?.(initialAutoTranslationDisabled);
                 window.__mcmScanLineMessages?.(); return;
               }
               window.__mcmLineTranslatorInstalled=true;
               const bubbles=new Map(), pending=new Set();
               let number=1, timer=null;
               let presentation=normalizePresentation(initialPresentation);
+              let autoTranslationDisabled=!!initialAutoTranslationDisabled;
               const clean=t=>String(t||"").replace(/\u200B/g,"").replace(/\r/g,"").replace(/[ \t]+/g," ").replace(/\n{3,}/g,"\n\n").trim();
               const ja=t=>/[\u3040-\u30ff\u31f0-\u31ff]/.test(t);
               function normalizePresentation(value) {
                 const fontSize=Math.min(18,Math.max(12,Number(value?.FontSize)||12));
                 return {fontSize,displayMode:value?.DisplayMode==="TranslationOnly"?"TranslationOnly":"BelowOriginal"};
               }
-              const excluded=e=>!e||!!e.closest("input,textarea,button,nav,header,footer,[contenteditable='true'],.mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-translation-status");
+              const excluded=e=>!e||!!e.closest("input,textarea,button,nav,header,footer,[contenteditable='true'],.mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-ai-reply,.mcm-line-translation-status");
               function visible(e) {
                 if(!e||!(e instanceof HTMLElement)) return false;
                 const s=getComputedStyle(e),r=e.getBoundingClientRect();
                 return s.display!=="none"&&s.visibility!=="hidden"&&Number(s.opacity)!==0&&r.width>0&&r.height>0;
               }
+              function isIncoming(b) {
+                const remembered=b.getAttribute("data-mcm-line-incoming");
+                if(remembered!==null) return remembered==="true";
+
+                /* 绿色是本方消息；其余情况用气泡左边界作后备判断。
+                 * 不能用右边界，因为超长的对方消息本身也会占满整行。 */
+                const r=b.getBoundingClientRect();
+                const color=(getComputedStyle(b).backgroundColor.match(/\d+/g)||[]).map(Number);
+                const isGreen=color.length>=3&&color[1]>color[0]+20&&color[1]>color[2]+15;
+                const incoming=!isGreen&&r.left<innerWidth*.48;
+                b.setAttribute("data-mcm-line-incoming",incoming?"true":"false");
+                return incoming;
+              }
               function bubbleFor(e) {
                 const source=clean(e.innerText); let current=e;
+                let best=null,bestArea=0;
                 for(let i=0;i<9&&current;i++,current=current.parentElement) {
                   if(!(current instanceof HTMLElement)) break;
                   const r=current.getBoundingClientRect(),s=getComputedStyle(current);
-                  const valid=r.left>=innerWidth*.28&&r.top>=100&&r.bottom<=innerHeight-45&&r.width>=35&&r.width<=innerWidth*.70&&r.height>=20&&r.height<=30000&&(parseFloat(s.borderRadius)||0)>=5&&s.backgroundColor!=="transparent"&&s.backgroundColor!=="rgba(0, 0, 0, 0)";
+                  /* 宽屏 LINE 会把对方气泡贴近左边缘；不能再要求它位于页面 28% 之后。 */
+                  const valid=r.left>=-8&&r.right<=innerWidth+8&&r.bottom>=80&&r.top<=innerHeight+80&&r.width>=35&&r.width<=innerWidth*.70&&r.height>=20&&r.height<=30000&&(parseFloat(s.borderRadius)||0)>=5&&s.backgroundColor!=="transparent"&&s.backgroundColor!=="rgba(0, 0, 0, 0)";
                   const now=clean(current.innerText);
-                  if(valid&&(now===source||now.startsWith(source))) return current;
-                } return null;
+                  const area=r.width*r.height;
+                  /* 取最外层的消息气泡，避免把“回复引用”的子卡片当成一条新消息。 */
+                  if(valid&&(now===source||now.startsWith(source))&&area>=bestArea) {
+                    best=current;bestArea=area;
+                  }
+                } return best;
               }
               function idFor(b) {
                 let id=b.getAttribute("data-mcm-message-id");
@@ -199,24 +264,29 @@ namespace MultiChatManager2
                 return bubbles.get(id)||document.querySelector('[data-mcm-message-id="'+id+'"]');
               }
               function sourceFor(b) {
-                const remembered=b.getAttribute("data-mcm-line-source");
-                if(remembered) return remembered;
                 const c=b.cloneNode(true);
-                c.querySelectorAll(".mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-translation-status").forEach(x=>x.remove());
+                c.querySelectorAll(".mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-ai-reply,.mcm-line-translation-status").forEach(x=>x.remove());
                 // “显示更多”只是 LINE 的折叠控件，不能送去翻译。
                 Array.from(c.querySelectorAll("*")).filter(x=>clean(x.innerText)==="显示更多").forEach(x=>x.remove());
                 /*
                  * LINE 的“回复”会把被回复的消息作为一个子卡片放在
-                 * 新消息上方。该卡片也可能有日文；不能把它和新消息
-                 * 一起交给翻译接口。优先取最下面的日文内容块。
+                 * 新消息上方。引用卡片与新正文有时被套在同一个外层
+                 * 节点，不能只看最外层文本；递进到最后一个有正文的
+                 * 分支，才能稳定取到当前新发出的内容。
                  */
-                const directParts=Array.from(c.children)
-                  .map(x=>clean(x.innerText))
-                  .filter(x=>ja(x));
-                if(directParts.length>1) {
-                  return directParts[directParts.length-1];
+                function newestBody(node,depth=0) {
+                  const children=Array.from(node.children)
+                    .filter(x=>clean(x.innerText).length>1&&
+                      /[A-Za-z\u3040-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af]/.test(clean(x.innerText)));
+                  if(!children.length||depth>=8) return clean(node.innerText);
+                  const last=children[children.length-1];
+                  const lastText=clean(last.innerText);
+                  /* 一层包装节点继续向下找；遇到“引用卡片 + 新正文”的兄弟节点时取最后的新正文。 */
+                  return children.length===1
+                    ? (newestBody(last,depth+1)||lastText)
+                    : lastText;
                 }
-                return clean(c.innerText);
+                return newestBody(c);
               }
               /*
                * 超长消息的正文常被 LINE 拆成很多直接子节点；普通
@@ -224,15 +294,14 @@ namespace MultiChatManager2
                * 全文翻译必须取整条展开后的消息，不能只取最后一段。
                */
               function fullSourceFor(b) {
-                const remembered=b.getAttribute("data-mcm-line-source");
-                if(remembered) return remembered;
                 const c=b.cloneNode(true);
-                c.querySelectorAll(".mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-translation-status").forEach(x=>x.remove());
+                c.querySelectorAll(".mcm-line-translation,.mcm-line-translate-copy,.mcm-line-translate-retry,.mcm-line-translate-full,.mcm-line-ai-reply,.mcm-line-translation-status").forEach(x=>x.remove());
                 Array.from(c.querySelectorAll("*")).filter(x=>clean(x.innerText)==="显示更多").forEach(x=>x.remove());
                 return clean(c.innerText);
               }
               function rememberSource(b) {
-                const source=fullSourceFor(b);
+                /* 保存最后一次译文对应的“当前消息正文”，供手动展开后检测内容变化。 */
+                const source=sourceFor(b);
                 if(source) b.setAttribute("data-mcm-line-source",source);
               }
               function isOwnDirectChild(child) {
@@ -240,6 +309,7 @@ namespace MultiChatManager2
                   child.classList.contains("mcm-line-translate-copy")||
                   child.classList.contains("mcm-line-translate-retry")||
                   child.classList.contains("mcm-line-translate-full")||
+                  child.classList.contains("mcm-line-ai-reply")||
                   child.classList.contains("mcm-line-translation-status");
               }
               function setSourceVisibility(b,displayMode=presentation.displayMode) {
@@ -281,16 +351,20 @@ namespace MultiChatManager2
                */
               function bubbleFromMore(more) {
                 let current=more;
+                let best=null,bestArea=0;
                 for(let i=0;i<12&&current;i++,current=current.parentElement) {
                   if(!(current instanceof HTMLElement)) break;
                   const r=current.getBoundingClientRect(),s=getComputedStyle(current);
-                  const valid=r.left>=innerWidth*.28&&r.top>=100&&
+                  const valid=r.left>=-8&&r.right<=innerWidth+8&&r.bottom>=80&&r.top<=innerHeight+80&&
                     r.width>=35&&r.width<=innerWidth*.76&&r.height>=20&&
                     r.height<=30000&&(parseFloat(s.borderRadius)||0)>=5&&
                     s.backgroundColor!=="transparent"&&s.backgroundColor!=="rgba(0, 0, 0, 0)";
-                  if(valid&&ja(clean(current.innerText))) return current;
+                  const area=r.width*r.height;
+                  if(valid&&ja(clean(current.innerText))&&area>=bestArea) {
+                    best=current;bestArea=area;
+                  }
                 }
-                return null;
+                return best;
               }
               function status(b,text,bad) {
                 let s=b.querySelector(":scope > .mcm-line-translation-status");
@@ -330,6 +404,24 @@ namespace MultiChatManager2
                 });
                 translation.appendChild(x);return x;
               }
+              function aiReplyButton(b,id,source,translation) {
+                const x=document.createElement("button");x.type="button";x.className="mcm-line-ai-reply";
+                x.textContent="✨ AI智能回复";x.title="根据这条对方消息生成回复";x.setAttribute("aria-label","AI智能回复");
+                Object.assign(x.style,{display:"inline-flex",alignItems:"center",justifyContent:"center",minHeight:"26px",margin:"7px 0 0 auto",padding:"3px 10px",border:"1px solid rgba(22,131,232,.55)",borderRadius:"13px",background:"#fff",color:"#1683e8",fontSize:"12px",fontWeight:"600",lineHeight:"1.2",cursor:"pointer"});
+                x.addEventListener("click",ev=>{
+                  ev.preventDefault();ev.stopPropagation();
+                  chrome.webview.postMessage(JSON.stringify({type:"lineAiReplyRequest",messageId:id,text:source,translation:translation}));
+                });
+                return x;
+              }
+              function ensureAiReplyButton(b,id,source,translation) {
+                const old=b.querySelector(":scope > .mcm-line-ai-reply");
+                if(old) return old;
+                const x=aiReplyButton(b,id,source,translation);
+                const retry=b.querySelector(":scope > .mcm-line-translate-retry");
+                if(retry) b.insertBefore(x,retry);else b.appendChild(x);
+                return x;
+              }
               function setBusy(b,yes) {
                 const x=b.querySelector(":scope > .mcm-line-translate-retry");
                 if(x) {x.disabled=yes;x.style.opacity=yes?".55":"1";x.title=yes?"正在翻译":"重新翻译";}
@@ -361,25 +453,13 @@ namespace MultiChatManager2
                 Object.assign(x.style,{display:"inline-flex",alignItems:"center",justifyContent:"center",minHeight:"26px",margin:"8px 0 0 auto",padding:"3px 10px",border:"1px solid rgba(22,131,232,.55)",borderRadius:"13px",background:"#fff",color:"#1683e8",fontSize:"12px",fontWeight:"600",lineHeight:"1.2",cursor:"pointer"});
                 x.addEventListener("click",ev=>{
                   ev.preventDefault();ev.stopPropagation();
-                  /*
-                   * LINE 的超长消息通常先折叠为“显示更多”。
-                   * 先点击展开，再读取一次完整内容，避免只翻译首段。
-                   */
-                  const more=moreFor(b)||knownMore;
-                  if(more) {
-                    x.disabled=true;x.style.opacity=".55";
-                    status(b,"正在展开全文…",false);
-                    more.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
-                    setTimeout(()=>{
-                      const text=fullSourceFor(b);
-                      if(!ja(text)) {status(b,"没有找到可翻译的日文内容。",true);x.disabled=false;x.style.opacity="1";return;}
-                      x.remove();request(b,text,true,true);
-                    },700);
+                  if(moreFor(b)) {
+                    status(b,"请先点击“显示更多”手动展开消息，再翻译全文。",false);
                     return;
                   }
-                  const text=fullSourceFor(b);
+                  const text=sourceFor(b)||source;
                   if(!ja(text)) {status(b,"没有找到可翻译的日文内容。",true);return;}
-                  x.remove();request(b,text,true,true);
+                  request(b,text,true,true);
                 });
                 b.appendChild(x);return x;
               }
@@ -399,22 +479,26 @@ namespace MultiChatManager2
                   });
               }
               function request(b,text,forced=false,fullMessage=false) {
+                if(autoTranslationDisabled&&!forced)return;
                 if(b.getAttribute("data-mcm-translated")==="true"&&!forced)return;
                 const id=idFor(b);
                 if(pending.has(id)) {status(b,"正在翻译，请稍候…",false);return;}
                 if(!forced&&b.getAttribute("data-mcm-auto-failed")==="true")return;
-                pending.add(id);b.querySelector(":scope > .mcm-line-translate-full")?.remove();retry(b,id);setBusy(b,true);
+                pending.add(id);
+                /* 折叠状态下保留“翻译全文”按钮，但绝不替用户点击“显示更多”。 */
+                if(fullMessage||!moreFor(b)) b.querySelector(":scope > .mcm-line-translate-full")?.remove();
+                retry(b,id);setBusy(b,true);
                 if(forced)status(b,fullMessage?"正在翻译全文…":"正在重新翻译…",false);
                 chrome.webview.postMessage(JSON.stringify({type:"lineTranslationRequest",messageId:id,text,forceRefresh:forced}));
               }
               window.__mcmApplyTranslation=(id,text)=>{
                 const b=find(id);if(!b)return;pending.delete(id);clearStatus(b);
-                b.querySelector(":scope > .mcm-line-translate-full")?.remove();
+                if(!moreFor(b)) b.querySelector(":scope > .mcm-line-translate-full")?.remove();
                 b.querySelector(":scope > .mcm-line-translation")?.remove();
                 rememberSource(b);
                 const x=retry(b,id),t=document.createElement("div");t.className="mcm-line-translation";t.textContent=text;
                 Object.assign(t.style,{display:"block",position:"relative",float:"none",clear:"both",width:"100%",maxWidth:"100%",boxSizing:"border-box",margin:"6px 0 0",padding:"6px 50px 0 0",borderTop:"1px solid rgba(22,131,232,.30)",color:"#1683e8",fontSize:"12px",fontWeight:"400",lineHeight:"1.5",textAlign:"left",whiteSpace:"pre-wrap",wordBreak:"break-word",overflowWrap:"anywhere",userSelect:"text"});
-                copyButton(t,text);b.insertBefore(t,x);applyPresentation(b,t);setBusy(b,false);b.removeAttribute("data-mcm-auto-failed");b.setAttribute("data-mcm-translated","true");
+                const incoming=isIncoming(b);copyButton(t,text);b.querySelector(":scope > .mcm-line-ai-reply")?.remove();b.insertBefore(t,x);if(incoming) ensureAiReplyButton(b,id,sourceFor(b),text);applyPresentation(b,t);setBusy(b,false);b.removeAttribute("data-mcm-auto-failed");b.setAttribute("data-mcm-translated","true");
               };
               window.__mcmTranslationProgress=(id,completed,total)=>{
                 const b=find(id);if(!b)return;
@@ -435,7 +519,12 @@ namespace MultiChatManager2
                   const b=t.parentElement;if(b) applyPresentation(b,t);
                 });
               };
+              window.__mcmSetAutoTranslationDisabled=value=>{
+                autoTranslationDisabled=!!value;
+                if(!autoTranslationDisabled) window.__mcmScanLineMessages?.();
+              };
               window.__mcmScanLineMessages=()=>{
+                /* 即使关闭自动翻译，折叠长消息也必须能手动点击“翻译全文”。 */
                 addFullButtonsForCollapsedMessages();
                 const seen=new Set();
                 document.querySelectorAll("div,span,p").forEach(e=>{
@@ -446,13 +535,17 @@ namespace MultiChatManager2
                   const b=bubbleFor(e);if(!b||seen.has(b))return;seen.add(b);
                   const source=sourceFor(b);if(!ja(source))return;
                   const id=idFor(b);
-                  const fullText=fullSourceFor(b);
+                  const incoming=isIncoming(b);
+                  /* AI 回复仅针对对方消息；日语翻译则要同时覆盖双方各自的新消息正文。 */
+                  if(incoming) ensureAiReplyButton(b,id,source,"");
+                  if(autoTranslationDisabled)return;
                   const more=moreFor(b);
-                  if((fullText.length>1800||more)&&
-                     b.getAttribute("data-mcm-translated")!=="true"&&
-                     !pending.has(id)) {
-                    full(b,id,fullText,more);return;
+                  const remembered=b.getAttribute("data-mcm-line-source");
+                  if(b.getAttribute("data-mcm-translated")==="true"&&remembered!==source) {
+                    /* 用户手动点“显示更多”后正文变长，自动用新正文替换旧译文。 */
+                    b.removeAttribute("data-mcm-translated");
                   }
+                  if(more) full(b,id,source,more);
                   request(b,source);
                 });
               };

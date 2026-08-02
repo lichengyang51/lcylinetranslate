@@ -79,6 +79,10 @@ namespace MultiChatManager2
         private readonly string _themeSettingsPath;
         private readonly string _lockSettingsPath;
         private readonly string _translationPresentationSettingsPath;
+        private readonly string _aiReplySettingsPath;
+        private AiReplySettings _aiReplySettings = new();
+        private readonly OpenAiReplyService _openAiReplyService;
+        private AiReplyWindow? _aiReplyWindow;
         private TranslationPresentationSettings
             _translationPresentationSettings = new();
         private bool _isLoadingTranslationPresentationSettings =
@@ -146,6 +150,18 @@ namespace MultiChatManager2
                     _dataFolder,
                     "translation-presentation.json");
 
+            _aiReplySettingsPath =
+                Path.Combine(
+                    _dataFolder,
+                    "ai-reply.json");
+
+            _aiReplySettings =
+                AiReplySettingsStore.Load(
+                    _aiReplySettingsPath);
+
+            _openAiReplyService =
+                new OpenAiReplyService();
+
             _youdaoTranslator =
                 new YoudaoTranslator(
                     _dataFolder);
@@ -156,12 +172,14 @@ namespace MultiChatManager2
             _lineTranslationManager =
                 new LineTranslationManager(
                     _youdaoTranslator,
-                    _translationPresentationSettings);
+                    _translationPresentationSettings,
+                    OpenAiReplyWindowAsync);
 
             _whatsAppTranslationManager =
                 new WhatsAppTranslationManager(
                     _youdaoTranslator,
-                    _translationPresentationSettings);
+                    _translationPresentationSettings,
+                    OpenAiReplyWindowAsync);
 
             Directory.CreateDirectory(
                 _dataFolder);
@@ -464,12 +482,40 @@ namespace MultiChatManager2
             }
         }
 
-        private void TranslateVisibleChatOnlyCheckBox_Click(
+        private async void TranslateVisibleChatOnlyCheckBox_Click(
     object sender,
     RoutedEventArgs e)
         {
             TranslateVisibleOnly =
                 TranslateVisibleChatOnlyCheckBox.IsChecked == true;
+
+            await ApplyAutoTranslationSettingAsync();
+        }
+
+        private async Task ApplyAutoTranslationSettingAsync()
+        {
+            string script =
+                "(()=>{window.__mcmSetAutoTranslationDisabled?.(" +
+                (TranslateVisibleOnly ? "true" : "false") +
+                ");})();";
+
+            foreach (WebView2 webView in
+                     _accountViews.Values.ToList())
+            {
+                if (webView.CoreWebView2 is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await webView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+                catch
+                {
+                    // 页面跳转期间会由页面脚本读取当前开关状态。
+                }
+            }
         }
         private void TranslationQuotaButton_Click(
             object sender,
@@ -521,6 +567,78 @@ namespace MultiChatManager2
                 };
 
             keyWindow.ShowDialog();
+        }
+
+        private void AiReplySettingsButton_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            SettingsPopup.IsOpen =
+                false;
+
+            AiReplySettingsWindow settingsWindow =
+                new AiReplySettingsWindow(
+                    _aiReplySettingsPath,
+                    _isDarkMode)
+                {
+                    Owner = this
+                };
+
+            if (settingsWindow.ShowDialog() == true)
+            {
+                _aiReplySettings =
+                    AiReplySettingsStore.Load(
+                        _aiReplySettingsPath);
+            }
+        }
+
+        private Task OpenAiReplyWindowAsync(
+            AiReplyRequest request)
+        {
+            return Dispatcher.InvokeAsync(
+                () =>
+                {
+                    _aiReplySettings =
+                        AiReplySettingsStore.Load(
+                            _aiReplySettingsPath);
+
+                    if (!_aiReplySettings.IsConfigured)
+                    {
+                        MessageBox.Show(
+                            this,
+                            "请先在右上角【设置】中打开“AI 智能回复 Key”，填写你自己的 OpenAI API Key。",
+                            "AI 智能回复",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                        return;
+                    }
+
+                    if (_aiReplyWindow is not null &&
+                        _aiReplyWindow.IsLoaded)
+                    {
+                        if (_aiReplyWindow.WindowState == WindowState.Minimized)
+                        {
+                            _aiReplyWindow.WindowState = WindowState.Normal;
+                        }
+
+                        _aiReplyWindow.UpdateRequest(request);
+                        return;
+                    }
+
+                    _aiReplyWindow = new AiReplyWindow(
+                        request,
+                        _aiReplySettings,
+                        _openAiReplyService,
+                        _isDarkMode)
+                    {
+                        Owner = this
+                    };
+
+                    _aiReplyWindow.Closed += (_, __) =>
+                        _aiReplyWindow = null;
+
+                    _aiReplyWindow.Show();
+                }).Task;
         }
 
         private void ClearTranslationCacheButton_Click(
@@ -1167,6 +1285,7 @@ namespace MultiChatManager2
     EventArgs e)
         {
             DisposeUpdateModule();
+            _openAiReplyService.Dispose();
         }
 
 

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "2.0.1",
+    [string]$Version = "2.0.2",
 
     [string]$OutputRoot =
         (Join-Path $PSScriptRoot "Release"),
@@ -133,7 +133,7 @@ try
                     [DateTime]::UtcNow.ToString("o")
                 mandatory = $false
                 releaseNotes =
-                    "1. 优化夜间模式配色：LINE 左侧功能栏、联系人与会话区域更协调，减少刺眼白色。`n2. 修复设置中【译文字体大小】和【译文显示方式】在夜间模式下文字看不清的问题。`n3. 优化 LINE 动态页面加载后的夜间模式稳定性。"
+                    "1. 新增【AI智能回复】：在对方消息译文下方可一键打开，生成可直接复制的中文回复。`n2. 支持目标分类与最多两个具体目标，并可选择关系、回复风格、情绪表达、回复范围和回复节奏；AI 会按所选要求生成。`n3. 优化 AI 智能回复窗口：同一窗口会随所点消息更新，具体目标可展开、收起并多选。`n4. 修复 LINE 长消息、手动【显示更多】、回复引用及不同语言互相回复时的翻译显示问题。"
                 package = [ordered]@{
                     url = $publicUrl
                     size = $packageInfo.Length

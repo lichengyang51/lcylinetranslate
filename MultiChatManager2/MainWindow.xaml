@@ -769,6 +769,27 @@
                                         </ComboBox>
                                     </StackPanel>
 
+                                    <Separator Margin="6,2,6,6"
+                                               Background="{DynamicResource DividerBrush}"/>
+
+                                    <TextBlock Text="AI 智能回复"
+                                               Margin="8,2,8,5"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SecondaryTextBrush}"/>
+
+                                    <Button x:Name="AiReplySettingsButton"
+                    Height="34"
+                    HorizontalContentAlignment="Left"
+                    Padding="12,0"
+                    Content="✨ AI 智能回复 Key"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Foreground="{DynamicResource MainTextBrush}"
+                    Cursor="Hand"
+                    ToolTip="配置当前电脑的 OpenAI API Key"
+                    Click="AiReplySettingsButton_Click"/>
+
                                     <Button x:Name="SetYoudaoKeyButton"
                     Height="34"
                     HorizontalContentAlignment="Left"

@@ -18,19 +18,25 @@ namespace MultiChatManager2
         private readonly TranslationPresentationSettings
             _presentationSettings;
 
+        private readonly Func<AiReplyRequest, Task>? _aiReplyRequested;
+
         private readonly ConcurrentDictionary<string, byte>
             _processing =
                 new(StringComparer.Ordinal);
 
         public WhatsAppTranslationManager(
             YoudaoTranslator translator,
-            TranslationPresentationSettings presentationSettings)
+            TranslationPresentationSettings presentationSettings,
+            Func<AiReplyRequest, Task>? aiReplyRequested = null)
         {
             _translator =
                 translator;
 
             _presentationSettings =
                 presentationSettings;
+
+            _aiReplyRequested =
+                aiReplyRequested;
         }
 
         public async Task AttachAsync(
@@ -85,8 +91,21 @@ namespace MultiChatManager2
 
                 if (!root.TryGetProperty(
                         "type",
-                        out JsonElement typeElement) ||
-                    typeElement.GetString() !=
+                        out JsonElement typeElement))
+                {
+                    return;
+                }
+
+                if (typeElement.GetString() == "whatsAppAiReplyRequest")
+                {
+                    await HandleAiReplyRequestAsync(
+                        webView,
+                        accountId,
+                        root);
+                    return;
+                }
+
+                if (typeElement.GetString() !=
                         "whatsAppTranslationRequest" ||
                     !root.TryGetProperty(
                         "messageId",
@@ -193,6 +212,34 @@ namespace MultiChatManager2
             }
         }
 
+        private async Task HandleAiReplyRequestAsync(
+            WebView2 webView,
+            string accountId,
+            JsonElement root)
+        {
+            if (_aiReplyRequested is null ||
+                !root.TryGetProperty("text", out JsonElement sourceElement) ||
+                !root.TryGetProperty("translation", out JsonElement translationElement))
+            {
+                return;
+            }
+
+            string source = sourceElement.GetString() ?? string.Empty;
+            string translation = translationElement.GetString() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return;
+            }
+
+            await _aiReplyRequested(new AiReplyRequest(
+                webView,
+                accountId,
+                "WhatsApp",
+                source,
+                translation));
+        }
+
         private static async Task ReportFailureAsync(
             WebView2 webView,
             string messageId,
@@ -233,9 +280,12 @@ namespace MultiChatManager2
         $$$$$$$$$$"""
         (() => {
           const initialPresentation = {{{{{{{{{{JsonSerializer.Serialize(_presentationSettings)}}}}}}}}}};
+          const initialAutoTranslationDisabled = {{{{{{{{{{JsonSerializer.Serialize(MainWindow.TranslateVisibleOnly)}}}}}}}}}};
           if (window.__mcmWhatsAppTranslatorInstalled) {
             window.__mcmUpdateWhatsAppTranslationSettings?.(
               initialPresentation);
+            window.__mcmSetAutoTranslationDisabled?.(
+              initialAutoTranslationDisabled);
             window.__mcmWhatsAppScan?.();
             return;
           }
@@ -247,6 +297,7 @@ namespace MultiChatManager2
           let nextId = 1;
           let scanTimer = null;
           let presentation = normalizePresentation(initialPresentation);
+          let autoTranslationDisabled = !!initialAutoTranslationDisabled;
 
           const clean = value => String(value || "")
             .replace(/\u200B/g, "")
@@ -287,7 +338,16 @@ namespace MultiChatManager2
               "input,textarea,button,header,footer,nav," +
               "[contenteditable='true'],.mcm-wa-translation," +
               ".mcm-wa-translate-copy,.mcm-wa-translate-retry," +
-              ".mcm-wa-translation-status");
+              ".mcm-wa-ai-reply,.mcm-wa-translation-status");
+          }
+
+          function isIncoming(bubble) {
+            if (bubble.closest(".message-in")) return true;
+            if (bubble.closest(".message-out")) return false;
+
+            /* WhatsApp 的消息方向样式随版本变化，布局位置是可靠的后备判断。 */
+            const rect = bubble.getBoundingClientRect();
+            return rect.right < innerWidth * .82;
           }
 
           function bubbleFor(element) {
@@ -350,7 +410,8 @@ namespace MultiChatManager2
             const clone = bubble.cloneNode(true);
             clone.querySelectorAll(
               ".mcm-wa-translation,.mcm-wa-translate-retry," +
-              ".mcm-wa-translate-copy,.mcm-wa-translation-status")
+              ".mcm-wa-translate-copy,.mcm-wa-ai-reply," +
+              ".mcm-wa-translation-status")
               .forEach(item => item.remove());
 
             const parts = Array.from(
@@ -386,6 +447,7 @@ namespace MultiChatManager2
               !item.classList.contains("mcm-wa-translation") &&
               !item.classList.contains("mcm-wa-translate-copy") &&
               !item.classList.contains("mcm-wa-translate-retry") &&
+              !item.classList.contains("mcm-wa-ai-reply") &&
               !item.classList.contains("mcm-wa-translation-status"));
           }
 
@@ -534,6 +596,64 @@ namespace MultiChatManager2
             return button;
           }
 
+          function aiReplyButton(bubble, id, source, translation) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "mcm-wa-ai-reply";
+            button.textContent = "✨ AI智能回复";
+            button.title = "根据这条对方消息生成回复";
+            button.setAttribute("aria-label", "AI智能回复");
+
+            Object.assign(button.style, {
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              float: "right",
+              minHeight: "26px",
+              margin: "5px 0 5px 7px",
+              padding: "3px 10px",
+              border: "1px solid rgba(22,131,232,.55)",
+              borderRadius: "13px",
+              background: "#fff",
+              color: "#1683e8",
+              fontSize: "12px",
+              fontWeight: "600",
+              lineHeight: "1.2",
+              cursor: "pointer"
+            });
+
+            button.addEventListener("click", event => {
+              event.preventDefault();
+              event.stopPropagation();
+              chrome.webview.postMessage(JSON.stringify({
+                type: "whatsAppAiReplyRequest",
+                messageId: id,
+                text: source,
+                translation: translation
+              }));
+            });
+
+            return button;
+          }
+
+          function ensureAiReplyButton(bubble, id, source, translation) {
+            const existing = bubble.querySelector(
+              ":scope .mcm-wa-ai-reply");
+            if (existing) return existing;
+
+            const button = aiReplyButton(bubble, id, source, translation);
+            const retry = bubble.querySelector(
+              ":scope .mcm-wa-translate-retry");
+
+            if (retry) {
+              bubble.insertBefore(button, retry);
+            } else {
+              bubble.appendChild(button);
+            }
+
+            return button;
+          }
+
           function setBusy(bubble, value) {
             const retry = bubble.querySelector(
               ":scope .mcm-wa-translate-retry");
@@ -598,6 +718,7 @@ namespace MultiChatManager2
           }
 
           function request(bubble, text, forceRefresh) {
+            if (autoTranslationDisabled && !forceRefresh) return;
             const id = idFor(bubble);
 
             if (pending.has(id)) return;
@@ -660,7 +781,11 @@ namespace MultiChatManager2
             copyButton(translation, text);
 
             const retry = retryButton(bubble, id);
+            bubble.querySelector(":scope .mcm-wa-ai-reply")?.remove();
             bubble.insertBefore(translation, retry);
+            if (isIncoming(bubble)) {
+              ensureAiReplyButton(bubble, id, sourceFor(bubble), text);
+            }
             applyPresentation(bubble, translation);
             setBusy(bubble, false);
             bubble.removeAttribute("data-mcm-wa-failed");
@@ -686,6 +811,13 @@ namespace MultiChatManager2
                 const bubble = translation.parentElement;
                 if (bubble) applyPresentation(bubble, translation);
               });
+          };
+
+          window.__mcmSetAutoTranslationDisabled = value => {
+            autoTranslationDisabled = !!value;
+            if (!autoTranslationDisabled) {
+              window.__mcmWhatsAppScan?.();
+            }
           };
 
           function scan() {
@@ -727,6 +859,13 @@ namespace MultiChatManager2
 
               const source = sourceFor(bubble);
               if (hasJapanese(source)) {
+                const id = idFor(bubble);
+                if (isIncoming(bubble)) {
+                  ensureAiReplyButton(bubble, id, source, "");
+                }
+                if (autoTranslationDisabled) {
+                  continue;
+                }
                 request(bubble, source, false);
               }
             }
