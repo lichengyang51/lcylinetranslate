@@ -9,6 +9,7 @@
 **/Release/
 PublishOutput/
 **/publish/
+.github/installer/ChineseSimplified.isl
 *.db
 *.db-shm
 *.db-wal

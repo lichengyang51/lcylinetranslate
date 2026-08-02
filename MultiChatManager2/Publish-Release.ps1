@@ -98,7 +98,7 @@ try
     New-Item -ItemType Directory -Path $updaterTargetDirectory |
         Out-Null
 
-    Copy-Item -LiteralPath (Join-Path $updaterOutput "*") `
+    Copy-Item -Path (Join-Path $updaterOutput "*") `
         -Destination $updaterTargetDirectory `
         -Recurse
 
