@@ -808,7 +808,82 @@ namespace MultiChatManager2
                                 color: #777777 !important;
                                 opacity: 1 !important;
                             }
+
+                            /*
+                             * LINE 左侧窄导航在整页反色后会变成一条偏白的浅蓝灰。
+                             * 只为贴着 WebView 左边缘、几乎铺满窗口高度的工具栏补一个
+                             * 深炭灰底色；图标仍沿用整页反色后的浅色，因此保持清晰。
+                             */
+                            .mcm-dark-tool-rail {
+                                background: #d6d6d6 !important;
+                                border-right: 1px solid #c0c0c0 !important;
+                            }
                         `;
+
+                        const applyLeftToolRailTheme = () => {
+                            document
+                                .querySelectorAll(".mcm-dark-tool-rail")
+                                .forEach(element =>
+                                    element.classList.remove(
+                                        "mcm-dark-tool-rail"));
+
+                            /*
+                             * LINE 的侧栏容器没有稳定的 nav / role 标记，版本更新后会
+                             * 变成普通 div。因此只按它的视觉特征识别：贴左、窄、全高。
+                             * 同一条栏可能有两层 div，全部标记可确保真正绘制背景的那一
+                             * 层也会变深，而图标仍保留在上面。
+                             */
+                            const leftToolRails =
+                                Array.from(
+                                    document.body.querySelectorAll("*"))
+                                    .filter(element => {
+                                        const rect =
+                                            element.getBoundingClientRect();
+
+                                        return rect.left <= 4 &&
+                                            rect.top <= 4 &&
+                                            rect.width >= 45 &&
+                                            rect.width <= 120 &&
+                                            rect.height >= window.innerHeight * .72;
+                                    });
+
+                            leftToolRails.forEach(element =>
+                                element.classList.add(
+                                    "mcm-dark-tool-rail"));
+                        };
+
+                        applyLeftToolRailTheme();
+
+                        /*
+                         * 这条竖栏是 LINE 的单页程序在初始页面绘制后才插入的。
+                         * 监听后续 DOM 变化，确保它晚出现时也立即套用夜间颜色。
+                         */
+                        window.__mcmDarkToolRailObserver?.disconnect();
+
+                        let railRefreshPending = false;
+                        const toolRailObserver =
+                            new MutationObserver(() => {
+                                if (railRefreshPending) {
+                                    return;
+                                }
+
+                                railRefreshPending = true;
+
+                                requestAnimationFrame(() => {
+                                    railRefreshPending = false;
+                                    applyLeftToolRailTheme();
+                                });
+                            });
+
+                        toolRailObserver.observe(
+                            document.body,
+                            {
+                                childList: true,
+                                subtree: true
+                            });
+
+                        window.__mcmDarkToolRailObserver =
+                            toolRailObserver;
 
                         document.documentElement.style.backgroundColor =
                             "#ffffff";
@@ -823,6 +898,9 @@ namespace MultiChatManager2
                     script =
                     """
                     (() => {
+                        window.__mcmDarkToolRailObserver?.disconnect();
+                        delete window.__mcmDarkToolRailObserver;
+
                         const style =
                             document.getElementById(
                                 "multi-chat-dark-theme");

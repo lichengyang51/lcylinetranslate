@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "1.0.12",
+    [string]$Version = "2.0.1",
 
     [string]$OutputRoot =
         (Join-Path $PSScriptRoot "Release"),
@@ -133,7 +133,7 @@ try
                     [DateTime]::UtcNow.ToString("o")
                 mandatory = $false
                 releaseNotes =
-                    "1. Added copy buttons for translated messages in LINE and WhatsApp.`n2. Added shared translation font-size and display-mode settings.`n3. Improved dark mode colors and readability.`n4. Account cards can now be reordered by dragging."
+                    "1. 优化夜间模式配色：LINE 左侧功能栏、联系人与会话区域更协调，减少刺眼白色。`n2. 修复设置中【译文字体大小】和【译文显示方式】在夜间模式下文字看不清的问题。`n3. 优化 LINE 动态页面加载后的夜间模式稳定性。"
                 package = [ordered]@{
                     url = $publicUrl
                     size = $packageInfo.Length

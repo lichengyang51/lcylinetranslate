@@ -23,9 +23,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $releaseDir = Join-Path $env:RUNNER_TEMP 'line-release'
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
-          gh release download v1.0.12 --repo $env:GITHUB_REPOSITORY --pattern 'LineTranslate-1.0.12-win-x64.zip' --dir $releaseDir
+          gh release download v2.0.1 --repo $env:GITHUB_REPOSITORY --pattern 'LineTranslate-2.0.1-win-x64.zip' --dir $releaseDir
           $appDir = Join-Path $env:RUNNER_TEMP 'line-app'
-          Expand-Archive -LiteralPath (Join-Path $releaseDir 'LineTranslate-1.0.12-win-x64.zip') -DestinationPath $appDir -Force
+          Expand-Archive -LiteralPath (Join-Path $releaseDir 'LineTranslate-2.0.1-win-x64.zip') -DestinationPath $appDir -Force
           "LINE_APP_DIR=$appDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           $outputDir = Join-Path $env:RUNNER_TEMP 'line-installer'
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -46,7 +46,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $compiler = Get-ChildItem -Path @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe', 'C:\Program Files\Inno Setup 6\ISCC.exe') -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $compiler) { throw 'Inno Setup Compiler was not found.' }
-          & $compiler.FullName '.github\installer\LineTranslate-1.0.12.iss'
+          & $compiler.FullName '.github\installer\LineTranslate-2.0.1.iss'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Replace the release installer
@@ -55,6 +55,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:LINE_OUTPUT_DIR 'LcyLineTranslate_Setup_v1.0.12.exe'
-          gh release upload v1.0.12 "$installer#LcyLineTranslate_Setup_v1.0.12.exe" --clobber --repo $env:GITHUB_REPOSITORY
-          gh release delete-asset v1.0.12 'LineTranslate-1.0.12-win-x64.zip' --yes --repo $env:GITHUB_REPOSITORY
+          $installer = Join-Path $env:LINE_OUTPUT_DIR 'LcyLineTranslate_Setup_v2.0.1.exe'
+          gh release upload v2.0.1 "$installer#LcyLineTranslate_Setup_v2.0.1.exe" --clobber --repo $env:GITHUB_REPOSITORY
+          gh release delete-asset v2.0.1 'LineTranslate-2.0.1-win-x64.zip' --yes --repo $env:GITHUB_REPOSITORY
