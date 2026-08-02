@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="LineTranslate.Update/LineTranslate.Update.csproj" />
+  <Project Path="LineTranslate.Updater/LineTranslate.Updater.csproj" />
+  <Project Path="MultiChatManager2/LineTranslate.csproj" />
+</Solution>

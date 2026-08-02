@@ -1,0 +1,18 @@
+# Build output and IDE state
+**/[Bb]in/
+**/[Oo]bj/
+.vs/
+**/*.user
+
+# Local user data, browser profiles, and generated release files
+**/Data/
+**/Release/
+PublishOutput/
+**/publish/
+*.db
+*.db-shm
+*.db-wal
+
+# Per-machine settings and caches
+*.cache
+*.log

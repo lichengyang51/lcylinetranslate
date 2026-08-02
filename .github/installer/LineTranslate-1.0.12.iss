@@ -1,5 +1,5 @@
 #define AppName "LINE翻译多开业绩长虹版"
-#define AppVersion "1.0.10"
+#define AppVersion "1.0.12"
 #define AppExeName "LINE翻译多开业绩长虹版.exe"
 #define SourceDir GetEnv("LINE_APP_DIR")
 #define OutputDir GetEnv("LINE_OUTPUT_DIR")
@@ -13,7 +13,7 @@ DefaultDirName={localappdata}\Programs\LINE翻译多开业绩长虹版
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=LcyLineTranslate_Setup_v1.0.10
+OutputBaseFilename=LcyLineTranslate_Setup_v1.0.12
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

@@ -1,0 +1,365 @@
+﻿<Window x:Class="MultiChatManager2.YoudaoQuotaWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="字符情况"
+        Width="560"
+        Height="650"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F3F4F6"
+        FontFamily="Microsoft YaHei UI">
+
+    <Window.Resources>
+
+        <Style x:Key="InfoTitleStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="13"/>
+            <Setter Property="Foreground"
+                    Value="#6B7280"/>
+            <Setter Property="Margin"
+                    Value="0,0,0,6"/>
+        </Style>
+
+        <Style x:Key="InfoValueStyle"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="16"/>
+            <Setter Property="FontWeight"
+                    Value="SemiBold"/>
+            <Setter Property="Foreground"
+                    Value="#111827"/>
+            <Setter Property="TextWrapping"
+                    Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="InfoCardStyle"
+               TargetType="Border">
+            <Setter Property="Background"
+                    Value="#F9FAFB"/>
+            <Setter Property="BorderBrush"
+                    Value="#E5E7EB"/>
+            <Setter Property="BorderThickness"
+                    Value="1"/>
+            <Setter Property="CornerRadius"
+                    Value="10"/>
+            <Setter Property="Padding"
+                    Value="15"/>
+            <Setter Property="Margin"
+                    Value="0,0,0,12"/>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle"
+               TargetType="Button">
+            <Setter Property="Height"
+                    Value="38"/>
+            <Setter Property="MinWidth"
+                    Value="110"/>
+            <Setter Property="Padding"
+                    Value="14,0"/>
+            <Setter Property="Margin"
+                    Value="5,0"/>
+            <Setter Property="Background"
+                    Value="White"/>
+            <Setter Property="Foreground"
+                    Value="#111827"/>
+            <Setter Property="BorderBrush"
+                    Value="#D1D5DB"/>
+            <Setter Property="BorderThickness"
+                    Value="1"/>
+            <Setter Property="FontSize"
+                    Value="13"/>
+            <Setter Property="FontWeight"
+                    Value="SemiBold"/>
+            <Setter Property="Cursor"
+                    Value="Hand"/>
+
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsMouseOver"
+                                     Value="True">
+                                <Setter TargetName="ButtonBorder"
+                                        Property="Background"
+                                        Value="#F3F4F6"/>
+                            </Trigger>
+
+                            <Trigger Property="IsPressed"
+                                     Value="True">
+                                <Setter TargetName="ButtonBorder"
+                                        Property="Opacity"
+                                        Value="0.75"/>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled"
+                                     Value="False">
+                                <Setter TargetName="ButtonBorder"
+                                        Property="Opacity"
+                                        Value="0.5"/>
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+
+        </Style>
+
+    </Window.Resources>
+
+    <Grid Margin="22">
+
+        <Border Background="White"
+                BorderBrush="#E5E7EB"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="25">
+
+            <Grid>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 标题 -->
+                <StackPanel Grid.Row="0"
+                            HorizontalAlignment="Center">
+
+                    <TextBlock Text="📊"
+                               FontSize="34"
+                               HorizontalAlignment="Center"/>
+
+                    <TextBlock Text="翻译字符情况"
+                               Margin="0,8,0,0"
+                               FontSize="23"
+                               FontWeight="Bold"
+                               Foreground="#111827"
+                               HorizontalAlignment="Center"/>
+
+                    <TextBlock x:Name="SyncStatusTextBlock"
+                               Text="正在连接有道智云..."
+                               Margin="0,7,0,0"
+                               FontSize="12"
+                               Foreground="#6B7280"
+                               HorizontalAlignment="Center"/>
+
+                </StackPanel>
+
+                <!-- 百分比 -->
+                <Border Grid.Row="1"
+                        Margin="0,22,0,18"
+                        Background="#EFF6FF"
+                        BorderBrush="#BFDBFE"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="18">
+
+                    <StackPanel HorizontalAlignment="Center">
+
+                        <TextBlock x:Name="RemainingPercentTextBlock"
+                                   Text="--%"
+                                   FontSize="34"
+                                   FontWeight="Bold"
+                                   Foreground="#2563EB"
+                                   HorizontalAlignment="Center"/>
+
+                        <TextBlock Text="资源包剩余"
+                                   Margin="0,4,0,10"
+                                   FontSize="13"
+                                   Foreground="#6B7280"
+                                   HorizontalAlignment="Center"/>
+
+                        <ProgressBar x:Name="RemainingProgressBar"
+                                     Width="350"
+                                     Height="12"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="0"/>
+
+                    </StackPanel>
+
+                </Border>
+
+                <!-- 数据内容 -->
+                <ScrollViewer Grid.Row="2"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+
+                    <StackPanel>
+
+                        <Border Style="{StaticResource InfoCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="资源包名称"
+                                           Style="{StaticResource InfoTitleStyle}"/>
+
+                                <TextBlock x:Name="PackageNameTextBlock"
+                                           Text="-"
+                                           Style="{StaticResource InfoValueStyle}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid Margin="0,0,0,12">
+
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0"
+                                    Style="{StaticResource InfoCardStyle}"
+                                    Margin="0">
+
+                                <StackPanel>
+                                    <TextBlock Text="总字符"
+                                               Style="{StaticResource InfoTitleStyle}"/>
+
+                                    <TextBlock x:Name="TotalCharactersTextBlock"
+                                               Text="-"
+                                               Style="{StaticResource InfoValueStyle}"/>
+                                </StackPanel>
+
+                            </Border>
+
+                            <Border Grid.Column="2"
+                                    Style="{StaticResource InfoCardStyle}"
+                                    Margin="0">
+
+                                <StackPanel>
+                                    <TextBlock Text="剩余字符"
+                                               Style="{StaticResource InfoTitleStyle}"/>
+
+                                    <TextBlock x:Name="RemainingCharactersTextBlock"
+                                               Text="-"
+                                               Style="{StaticResource InfoValueStyle}"/>
+                                </StackPanel>
+
+                            </Border>
+
+                        </Grid>
+
+                        <Grid Margin="0,0,0,12">
+
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0"
+                                    Style="{StaticResource InfoCardStyle}"
+                                    Margin="0">
+
+                                <StackPanel>
+                                    <TextBlock Text="已使用"
+                                               Style="{StaticResource InfoTitleStyle}"/>
+
+                                    <TextBlock x:Name="UsedCharactersTextBlock"
+                                               Text="-"
+                                               Style="{StaticResource InfoValueStyle}"/>
+                                </StackPanel>
+
+                            </Border>
+
+                            <Border Grid.Column="2"
+                                    Style="{StaticResource InfoCardStyle}"
+                                    Margin="0">
+
+                                <StackPanel>
+                                    <TextBlock Text="资源包状态"
+                                               Style="{StaticResource InfoTitleStyle}"/>
+
+                                    <TextBlock x:Name="PackageStatusTextBlock"
+                                               Text="-"
+                                               Style="{StaticResource InfoValueStyle}"/>
+                                </StackPanel>
+
+                            </Border>
+
+                        </Grid>
+
+                        <Border Style="{StaticResource InfoCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="生效时间"
+                                           Style="{StaticResource InfoTitleStyle}"/>
+
+                                <TextBlock x:Name="EffectiveTimeTextBlock"
+                                           Text="-"
+                                           Style="{StaticResource InfoValueStyle}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource InfoCardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="失效时间"
+                                           Style="{StaticResource InfoTitleStyle}"/>
+
+                                <TextBlock x:Name="ExpireTimeTextBlock"
+                                           Text="-"
+                                           Style="{StaticResource InfoValueStyle}"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+
+                </ScrollViewer>
+
+                <!-- 底部按钮 -->
+                <StackPanel Grid.Row="3"
+                            Margin="0,18,0,0"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center">
+
+                    <Button x:Name="RefreshButton"
+                            Content="↻ 刷新"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Click="RefreshButton_Click"/>
+
+                    <Button x:Name="ReloginButton"
+                            Content="👤 重新登录"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Click="ReloginButton_Click"/>
+
+                    <Button x:Name="CloseButton"
+                            Content="关闭"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Click="CloseButton_Click"/>
+
+                </StackPanel>
+
+                <!-- 隐藏的有道查询浏览器 -->
+                <wv2:WebView2 x:Name="QueryWebView"
+                              Width="1"
+                              Height="1"
+                              Margin="-2,-2,0,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Top"
+                              IsHitTestVisible="False"
+                              Focusable="False"/>
+
+            </Grid>
+
+        </Border>
+
+    </Grid>
+
+</Window>
